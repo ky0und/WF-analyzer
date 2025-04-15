@@ -1,0 +1,7 @@
+build*/
+.vscode*/
+*.ts
+*.db
+*.json
+.venv*/
+__pycache__*/
