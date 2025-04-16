@@ -331,23 +331,51 @@ def main(page: ft.Page):
     add_watchlist_button.on_click = add_watchlist_clicked
     check_watchlist_button.on_click = check_watchlist_button_clicked
 
-    # --- Layout (Remove auto-check checkbox) ---
+# main.py - inside main() function
+
+    # --- Layout ---
+    page.clean() # Start fresh just in case
     page.add(
-        ft.Row([item_input, fetch_button, add_watchlist_button], alignment=ft.MainAxisAlignment.START),
-        ft.Row([search_status_text]),
-        ft.Divider(height=5),
-        live_orders_header_row,
-        ft.Column([live_data_table], scroll=ft.ScrollMode.ADAPTIVE, expand=2),
-        ft.Divider(height=5),
-        ft.Row([ ft.Text("Watchlist", style=ft.TextThemeStyle.HEADLINE_SMALL), ft.Column([ check_watchlist_button, ], spacing=0) ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN), # Removed checkbox
-        ft.Row([watchlist_status_text]),
-        ft.Column([watchlist_view], expand=1),
+        # Section 1: Search Controls & Status (Wrap in non-expanding Column)
+        ft.Column(
+            [
+                ft.Row([item_input, fetch_button, add_watchlist_button], alignment=ft.MainAxisAlignment.START),
+                ft.Row([search_status_text]),
+                ft.Divider(height=5),
+            ],
+            expand=0 # Does not expand vertically
+        ),
+
+        # Section 2: Live Data Section (Wrap Header + Scrolling Column)
+        ft.Column(
+            [
+                live_orders_header_row, # Row with Title and Radio buttons
+                ft.Column(              # Inner Column JUST for the scrolling table
+                    [live_data_table],
+                    scroll=ft.ScrollMode.ADAPTIVE,
+                    expand=True         # This inner column's table scrolls and expands *within* its parent
+                )
+            ],
+            expand=2 # This whole section gets 2 parts of the space
+        ),
+
+        # Section 3: Watchlist Section (Wrap Header + Scrolling Column)
+        ft.Column(
+            [
+            ft.Row([ ft.Text("Watchlist", style=ft.TextThemeStyle.HEADLINE_SMALL), ft.Column([ check_watchlist_button, ], spacing=0) ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+            ft.Row([watchlist_status_text]),
+            ft.Column(               # Inner Column JUST for the scrolling listview
+                    [watchlist_view],
+                    expand=True         # This inner list scrolls and expands *within* its parent
+                )
+            ],
+        expand=1 # This whole section gets 1 part of the space
+        ),
     )
+    # --- End Layout ---
 
     # --- Initial Data Load from API---
-    load_initial_data() # Fetch watchlist on startup
-    # Don't call update_watchlist_display here, load_initial_data does it
-    # page.update() # load_initial_data calls update
+    load_initial_data()
 
 # --- Run the App (No major changes needed here, cleanup is gone) ---
 if __name__ == "__main__":
