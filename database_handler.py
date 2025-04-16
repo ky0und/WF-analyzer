@@ -1,10 +1,8 @@
 # warframe_market_tracker/database_handler.py
 import psycopg2 # Use PostgreSQL adapter
-import psycopg2.extras # For dictionary cursor
 import datetime
 import os
 import json
-import statistics
 from dotenv import load_dotenv # Load .env file
 
 # Load environment variables from .env file (especially for local dev)

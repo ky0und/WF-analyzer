@@ -1,11 +1,6 @@
 # warframe_market_tracker/main.py
 import flet as ft
-import datetime
-import threading # Still need for locks? Maybe not if API handles concurrency
-import re
-import statistics
 import requests # <-- Import requests for API calls
-import json
 
 # Remove direct imports of api_handler and database_handler from frontend
 # import api_handler
@@ -29,9 +24,7 @@ API_BASE_URL = "/api" # Use relative path for deployment
 current_orders_data = []
 watched_items = {} # Will be loaded via API
 # data_lock likely still useful for UI updates if rendering is complex
-data_lock = threading.Lock()
 # watchlist_lock useful for updating local copy before potentially saving via API
-watchlist_lock = threading.Lock()
 live_order_filter = 'all'
 # Remove auto-check globals
 # auto_check_thread = None
@@ -106,15 +99,14 @@ def main(page: ft.Page):
             response = requests.get(f"{API_BASE_URL}/watchlist", timeout=10)
             response.raise_for_status() # Raise exception for bad status codes
             loaded_data = response.json()
-            with watchlist_lock:
-                 watched_items = loaded_data if isinstance(loaded_data, dict) else {}
+            watched_items = loaded_data if isinstance(loaded_data, dict) else {}
             print(f"Watchlist loaded via API. Items: {len(watched_items)}")
             update_watchlist_display() # Update UI
             update_status(watchlist_status_text, "Watchlist loaded.", is_loading=False)
         except requests.exceptions.RequestException as e:
             print(f"Error loading watchlist via API: {e}")
             update_status(watchlist_status_text, "Error loading watchlist.", is_error=True)
-            with watchlist_lock: watched_items = {} # Ensure empty on error
+            watched_items = {} # Ensure empty on error
             update_watchlist_display() # Show empty list
 
 
@@ -140,14 +132,13 @@ def main(page: ft.Page):
             data = response.json()
 
             if "orders" in data and isinstance(data["orders"], list):
-                with data_lock:
-                    current_orders_data = data["orders"]
+                current_orders_data = data["orders"]
                 status_message = f"Displaying {len(current_orders_data)} orders for {user_input.strip()}."
                 is_error = False
                 add_watchlist_button.disabled = False
                 add_watchlist_button.data = {'url_name': item_url_name, 'friendly_name': user_input.strip()}
             else:
-                with data_lock: current_orders_data = []
+                current_orders_data = []
                 status_message = f"No orders found or API error for {user_input.strip()}."
                 is_error = True # Treat as error for status color
 
@@ -157,12 +148,12 @@ def main(page: ft.Page):
         except requests.exceptions.RequestException as ex:
             print(f"Error calling /api/fetch_item: {ex}")
             update_status(search_status_text, f"Error fetching {user_input.strip()}.", is_error=True, controls_to_disable=controls)
-            with data_lock: current_orders_data = []
+            current_orders_data = []
             update_live_table_display()
         except Exception as ex_gen: # Catch potential JSON errors etc.
              print(f"Generic Error calling /api/fetch_item: {ex_gen}")
              update_status(search_status_text, f"Error processing data for {user_input.strip()}.", is_error=True, controls_to_disable=controls)
-             with data_lock: current_orders_data = []
+             current_orders_data = []
              update_live_table_display()
 
 
@@ -174,18 +165,18 @@ def main(page: ft.Page):
         friendly_name = item_data['friendly_name']
         new_watchlist = {}
 
-        with watchlist_lock:
-            # Create a copy to modify
-            new_watchlist = watched_items.copy()
-            if url_name not in new_watchlist:
-                new_watchlist[url_name] = {'status': 'Not Checked', 'last_checked': None, 'friendly_name': friendly_name}
-                update_local_state = True
-                status_msg = f"Added '{friendly_name}' to watchlist."
-                is_err = False
-            else:
-                update_local_state = False # Don't update local if already exists
-                status_msg = f"'{friendly_name}' is already on watchlist."
-                is_err = True
+
+        # Create a copy to modify
+        new_watchlist = watched_items.copy()
+        if url_name not in new_watchlist:
+            new_watchlist[url_name] = {'status': 'Not Checked', 'last_checked': None, 'friendly_name': friendly_name}
+            update_local_state = True
+            status_msg = f"Added '{friendly_name}' to watchlist."
+            is_err = False
+        else:
+            update_local_state = False # Don't update local if already exists
+            status_msg = f"'{friendly_name}' is already on watchlist."
+            is_err = True
 
         if update_local_state:
              # Attempt to save via API
@@ -194,8 +185,7 @@ def main(page: ft.Page):
                  response = requests.post(f"{API_BASE_URL}/watchlist", json=new_watchlist, timeout=10)
                  response.raise_for_status()
                  # If API save succeeds, update the global state
-                 with watchlist_lock:
-                     watched_items = new_watchlist
+                 watched_items = new_watchlist
                  update_watchlist_display()
                  update_status(search_status_text, status_msg, is_error=is_err)
                  print("Watchlist saved via API successfully.")
@@ -211,13 +201,12 @@ def main(page: ft.Page):
          global watched_items
          new_watchlist = {}
          item_removed_locally = False
-         with watchlist_lock:
-             if item_url_name in watched_items:
-                 new_watchlist = watched_items.copy()
-                 del new_watchlist[item_url_name]
-                 item_removed_locally = True
-             else:
-                 print(f"Item {item_url_name} not found in local watchlist for removal.")
+         if item_url_name in watched_items:
+             new_watchlist = watched_items.copy()
+             del new_watchlist[item_url_name]
+             item_removed_locally = True
+         else:
+             print(f"Item {item_url_name} not found in local watchlist for removal.")
 
          if item_removed_locally:
              # Attempt to save the reduced list via API
@@ -226,8 +215,7 @@ def main(page: ft.Page):
                  response = requests.post(f"{API_BASE_URL}/watchlist", json=new_watchlist, timeout=10)
                  response.raise_for_status()
                  # If API save succeeds, update the global state
-                 with watchlist_lock:
-                     watched_items = new_watchlist
+                 watched_items = new_watchlist
                  update_watchlist_display()
                  print(f"Removed {item_url_name} via API successfully.")
                  # Optional: Update status bar
@@ -262,32 +250,31 @@ def main(page: ft.Page):
         # ... (Must call page.update() at the end) ...
         global current_orders_data, live_order_filter
         new_rows = []
-        with data_lock:
-             filtered_orders = []
-             if live_order_filter == 'all': filtered_orders = current_orders_data
-             elif live_order_filter == 'sell': filtered_orders = [o for o in current_orders_data if o.get('order_type') == 'sell']
-             elif live_order_filter == 'buy': filtered_orders = [o for o in current_orders_data if o.get('order_type') == 'buy']
-             else: filtered_orders = current_orders_data
-             orders_to_display = filtered_orders
-             sort_idx = live_data_table.sort_column_index
-             sort_asc = live_data_table.sort_ascending
-             if sort_idx is not None and sort_idx != 0:
-                  def get_sort_key(order):
-                      if sort_idx == 1: return order.get('item_url_name', '').lower()
-                      elif sort_idx == 2: return order.get('user', {}).get('ingame_name', '').lower()
-                      elif sort_idx == 3: return order.get('order_type', '').lower()
-                      elif sort_idx == 4: return int(order.get('quantity', 0))
-                      elif sort_idx == 5: return int(order.get('platinum', 0))
-                      elif sort_idx == 6: return order.get('user', {}).get('status', '').lower()
-                      else: return None
-                  try: orders_to_display.sort(key=get_sort_key, reverse=not sort_asc)
-                  except Exception as sort_err: print(f"Error during live table sort: {sort_err}")
-             for order in orders_to_display:
-                  item_name = order.get('item_url_name', '?').replace("_", " ").title()
-                  user_info=order.get('user', {}); user_name=user_info.get('ingame_name','?'); user_status=user_info.get('status','?'); order_type=str(order.get('order_type','?')).capitalize(); quantity=order.get('quantity',0); price=order.get('platinum',0)
-                  copy_button = ft.IconButton( icon=ft.icons.CONTENT_COPY_ROUNDED, tooltip="Copy whisper message", icon_size=16, on_click=lambda _, o=order: copy_whisper_message(o), style=ft.ButtonStyle(padding=ft.padding.only(left=0, right=0)),)
-                  row = ft.DataRow(cells=[ ft.DataCell(copy_button), ft.DataCell(ft.Text(item_name, tooltip=order.get('item_url_name'))), ft.DataCell(ft.Text(user_name, tooltip=f"Status: {user_status}")), ft.DataCell(ft.Text(order_type)), ft.DataCell(ft.Text(f"{quantity}")), ft.DataCell(ft.Text(f"{price:,}")), ft.DataCell(ft.Text(user_status.capitalize())), ])
-                  new_rows.append(row)
+        filtered_orders = []
+        if live_order_filter == 'all': filtered_orders = current_orders_data
+        elif live_order_filter == 'sell': filtered_orders = [o for o in current_orders_data if o.get('order_type') == 'sell']
+        elif live_order_filter == 'buy': filtered_orders = [o for o in current_orders_data if o.get('order_type') == 'buy']
+        else: filtered_orders = current_orders_data
+        orders_to_display = filtered_orders
+        sort_idx = live_data_table.sort_column_index
+        sort_asc = live_data_table.sort_ascending
+        if sort_idx is not None and sort_idx != 0:
+            def get_sort_key(order):
+                if sort_idx == 1: return order.get('item_url_name', '').lower()
+                elif sort_idx == 2: return order.get('user', {}).get('ingame_name', '').lower()
+                elif sort_idx == 3: return order.get('order_type', '').lower()
+                elif sort_idx == 4: return int(order.get('quantity', 0))
+                elif sort_idx == 5: return int(order.get('platinum', 0))
+                elif sort_idx == 6: return order.get('user', {}).get('status', '').lower()
+                else: return None
+            try: orders_to_display.sort(key=get_sort_key, reverse=not sort_asc)
+            except Exception as sort_err: print(f"Error during live table sort: {sort_err}")
+        for order in orders_to_display:
+            item_name = order.get('item_url_name', '?').replace("_", " ").title()
+            user_info=order.get('user', {}); user_name=user_info.get('ingame_name','?'); user_status=user_info.get('status','?'); order_type=str(order.get('order_type','?')).capitalize(); quantity=order.get('quantity',0); price=order.get('platinum',0)
+            copy_button = ft.IconButton( icon=ft.icons.CONTENT_COPY_ROUNDED, tooltip="Copy whisper message", icon_size=16, on_click=lambda _, o=order: copy_whisper_message(o), style=ft.ButtonStyle(padding=ft.padding.only(left=0, right=0)),)
+            row = ft.DataRow(cells=[ ft.DataCell(copy_button), ft.DataCell(ft.Text(item_name, tooltip=order.get('item_url_name'))), ft.DataCell(ft.Text(user_name, tooltip=f"Status: {user_status}")), ft.DataCell(ft.Text(order_type)), ft.DataCell(ft.Text(f"{quantity}")), ft.DataCell(ft.Text(f"{price:,}")), ft.DataCell(ft.Text(user_status.capitalize())), ])
+            new_rows.append(row)
         live_data_table.rows = new_rows
         print(f"UI: Live table updated with {len(new_rows)} rows (Filter: {live_order_filter}).")
         page.update()
@@ -297,14 +284,13 @@ def main(page: ft.Page):
         # ... (Implementation mostly same, reads global watched_items, calls page.update()) ...
          global watched_items
          controls = []
-         with watchlist_lock:
-             sorted_items = sorted(watched_items.items(), key=lambda item: item[1].get('friendly_name', item[0]))
-             for url_name, item_info in sorted_items:
-                 friendly_name = item_info.get('friendly_name', url_name)
-                 status = item_info.get('status', 'Unknown') # Status now comes from DB via API
-                 last_checked = item_info.get('last_checked', 'Never')
-                 status_color = ft.colors.GREEN if "Good Buy" in status else ft.colors.ORANGE if "Error" in status or "Not Enough" in status else ft.colors.BLUE_GREY_300 if "Checking" in status else None
-                 controls.append( ft.ListTile( title=ft.Text(friendly_name, weight=ft.FontWeight.BOLD), subtitle=ft.Text(f"Status: {status} (Checked: {last_checked})", color=status_color), trailing=ft.IconButton( icon=ft.icons.DELETE_OUTLINE, tooltip=f"Remove {friendly_name}", on_click=lambda _, u=url_name: remove_watchlist_item(u), icon_color=ft.colors.RED_400), data=url_name ) )
+         sorted_items = sorted(watched_items.items(), key=lambda item: item[1].get('friendly_name', item[0]))
+         for url_name, item_info in sorted_items:
+             friendly_name = item_info.get('friendly_name', url_name)
+             status = item_info.get('status', 'Unknown') # Status now comes from DB via API
+             last_checked = item_info.get('last_checked', 'Never')
+             status_color = ft.colors.GREEN if "Good Buy" in status else ft.colors.ORANGE if "Error" in status or "Not Enough" in status else ft.colors.BLUE_GREY_300 if "Checking" in status else None
+             controls.append( ft.ListTile( title=ft.Text(friendly_name, weight=ft.FontWeight.BOLD), subtitle=ft.Text(f"Status: {status} (Checked: {last_checked})", color=status_color), trailing=ft.IconButton( icon=ft.icons.DELETE_OUTLINE, tooltip=f"Remove {friendly_name}", on_click=lambda _, u=url_name: remove_watchlist_item(u), icon_color=ft.colors.RED_400), data=url_name ) )
          watchlist_view.controls = controls
          page.update()
 
