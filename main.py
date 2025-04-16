@@ -17,7 +17,7 @@ PLATFORM = "pc"
 # AUTO_CHECK_INTERVAL_MINUTES = 30
 
 # API Base URL (adjust if needed, depends on Vercel deployment / local testing)
-API_BASE_URL = "/api" # Use relative path for deployment
+API_BASE_URL = "https://wf-analyzer.onrender.com/api" # Use relative path for deployment
 
 # --- Global Variables ---
 # Remove db_connection
