@@ -1,27 +1,30 @@
-      
 # api/index.py
 from flask import Flask, request, jsonify
+from flask_cors import CORS # <-- Import CORS
 import os
 import sys
 import datetime
+import json
 
-# Add project root to sys.path to import handlers
-# Adjust based on your project structure if api/ is not directly in root
+# --- Add project root to sys.path ---
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-# Now import your handlers
+# --- Import your handlers ---
 try:
-    import api_handler # Your original handler for warframe.market calls
-    import database_handler # Your NEW PostgreSQL handler
+    import api_handler
+    import database_handler
 except ImportError as e:
-     # Basic error response if imports fail
      print(f"CRITICAL IMPORT ERROR in API: {e}")
-     # In production, you might want to handle this more gracefully
-     # or ensure the deployment environment has the correct path setup.
+     # Handle appropriately
 
 app = Flask(__name__)
+
+# --- Configure CORS ---
+# Option 1: Allow all origins (simplest for now, maybe restrict later)
+CORS(app)
+
 
 # Initialize database on first request (or ideally before) if needed
 # This is simplified; proper setup might involve app context

@@ -7,7 +7,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL") # pg8000 can often parse the standard URL
-print(f"--- DATABASE_URL FROM ENV: {DATABASE_URL} ---") # <-- ADD THIS LINE
 
 def get_db_connection():
     """Establishes a connection to the PostgreSQL database using pg8000."""
