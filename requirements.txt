@@ -2,5 +2,5 @@
 Flask
 gunicorn
 requests
-psycopg2-binary
+pg8000           
 python-dotenv
