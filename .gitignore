@@ -2,6 +2,8 @@ build*/
 .vscode*/
 *.ts
 *.db
-*.json
+watchlist.json
 .venv*/
 __pycache__*/
+.env
+.vercel
