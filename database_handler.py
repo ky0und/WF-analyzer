@@ -1,41 +1,68 @@
-# warframe_market_tracker/database_handler.py
-import pg8000 # <--- Import pg8000
-import datetime
+      
+# database_handler.py
 import os
-import json
 from dotenv import load_dotenv
+import pg8000
+from urllib.parse import urlparse # <-- Make sure this is imported
 
 load_dotenv()
-DATABASE_URL = os.getenv("DATABASE_URL") # pg8000 can often parse the standard URL
+DATABASE_URL = os.getenv("DATABASE_URL")
+print(f"--- DATABASE_URL FROM ENV: {DATABASE_URL} ---") # Keep this print
 
 def get_db_connection():
-    """Establishes a connection to the PostgreSQL database using pg8000."""
     if not DATABASE_URL:
+        print("--- ERROR: DATABASE_URL environment variable is NOT SET. ---")
         raise ValueError("DATABASE_URL environment variable not set.")
+
+    # --- Force parsing and explicit parameters ---
     try:
-        # pg8000 can parse the URL directly, or you might need to extract components
-        # depending on your specific URL format and pg8000 version.
-        # Basic URL parsing might be needed if direct connect fails:
-        # from urllib.parse import urlparse
-        # url = urlparse(DATABASE_URL)
-        # conn = pg8000.connect(
-        #    user=url.username,
-        #    password=url.password,
-        #    host=url.hostname,
-        #    port=url.port,
-        #    database=url.path[1:] # Remove leading '/'
-        # )
-        # --- Try direct connection first (often works) ---
-        conn = pg8000.connect(DATABASE_URL)
-        # --- End Direct ---
+        print(f"--- Parsing URL: {DATABASE_URL} ---")
+        url = urlparse(DATABASE_URL)
+
+        # Extract components - Add print statements for EACH component
+        db_user = url.username
+        db_password = url.password
+        db_host = url.hostname
+        db_port = url.port
+        db_name = url.path[1:] # Remove leading '/'
+
+        print(f"--- Parsed Components ---")
+        print(f"User: {db_user}")
+        print(f"Host: {db_host}")
+        print(f"Port: {db_port}")
+        print(f"Database: {db_name}")
+        # Avoid printing password in production logs if possible, but okay for debugging now
+        print(f"Password: {'*' * len(db_password) if db_password else 'None'}")
+
+
+        if not all([db_user, db_password, db_host, db_port, db_name]):
+             print("--- ERROR: Failed to parse one or more components from DATABASE_URL ---")
+             raise ValueError("Failed to parse required components from DATABASE_URL")
+
+        print(f"--- Attempting pg8000.connect with explicit args to Host: {db_host} ---")
+        conn = pg8000.connect(
+            user=db_user,
+            password=db_password,
+            host=db_host,
+            port=db_port,
+            database=db_name
+            # You might need ssl_context=True if Render forces SSL and pg8000 doesn't auto-detect
+            # ssl_context=True
+        )
+        print("--- Explicit parameter connection successful ---")
         return conn
-    # Catch pg8000 specific errors
-    except pg8000.Error as e: # <--- Change Error type
-        print(f"Error connecting to PostgreSQL database using pg8000: {e}")
+    except pg8000.Error as e:
+        print(f"Error connecting to PostgreSQL database using pg8000 (explicit params): {e}")
         raise
-    except Exception as e: # Catch potential URL parsing errors etc.
-        print(f"Generic error connecting with pg8000: {e}")
+    except Exception as e:
+        # This will catch errors during parsing too
+        print(f"Error parsing DATABASE_URL or connecting with explicit params: {e}")
+        import traceback
+        traceback.print_exc() # Print full traceback for parsing errors
         raise
+    # --- End force parsing ---
+
+    
 
 
 def setup_database():
