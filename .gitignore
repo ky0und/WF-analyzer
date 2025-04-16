@@ -1,4 +1,5 @@
-build*/
+build*/flutter*
+build*/.hash*
 .vscode*/
 *.ts
 *.db
