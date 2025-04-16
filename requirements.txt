@@ -1,6 +1,2 @@
-# api/requirements.txt
-Flask
-gunicorn
+flet
 requests
-pg8000           
-python-dotenv

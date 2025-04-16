@@ -8,3 +8,6 @@ watchlist.json
 __pycache__*/
 .env
 .vercel
+.buildvenv*
+_temp*
+build_frontend.bat
