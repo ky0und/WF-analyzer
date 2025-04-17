@@ -1,6 +1,7 @@
 # warframe_market_tracker/main.py
 import flet as ft
 import requests # <-- Import requests for API calls
+import json
 
 # Remove direct imports of api_handler and database_handler from frontend
 # import api_handler
@@ -46,11 +47,6 @@ def main(page: ft.Page):
     page.title = "Warframe Market Tracker (Web)"
     page.vertical_alignment = ft.MainAxisAlignment.START
     # Adjust window properties if needed for desktop testing
-    page.window_width = 1050
-    page.window_height = 800
-    page.window_resizable = True
-    page.window_min_width = 700
-    page.window_min_height = 500
     page.update()
 
     # --- Define GUI Elements (Keep definitions, remove auto-check checkbox) ---
@@ -90,24 +86,60 @@ def main(page: ft.Page):
             for control in controls_to_disable: control.disabled = is_loading
         page.update()
 
-    # --- NEW: Function to Load Initial Data from API ---
     def load_initial_data():
-        global watched_items
-        print("Loading initial watchlist data from API...")
-        update_status(watchlist_status_text, "Loading watchlist...", is_loading=True)
-        try:
-            response = requests.get(f"{API_BASE_URL}/watchlist", timeout=10)
-            response.raise_for_status() # Raise exception for bad status codes
-            loaded_data = response.json()
-            watched_items = loaded_data if isinstance(loaded_data, dict) else {}
-            print(f"Watchlist loaded via API. Items: {len(watched_items)}")
-            update_watchlist_display() # Update UI
-            update_status(watchlist_status_text, "Watchlist loaded.", is_loading=False)
-        except requests.exceptions.RequestException as e:
-            print(f"Error loading watchlist via API: {e}")
-            update_status(watchlist_status_text, "Error loading watchlist.", is_error=True)
-            watched_items = {} # Ensure empty on error
-            update_watchlist_display() # Show empty list
+            global watched_items
+            print("Loading initial watchlist data from API...")
+            # Show specific loading message
+            update_status(watchlist_status_text, "Loading watchlist...", is_loading=True, controls_to_disable=[check_watchlist_button])
+            error_message = "Error loading watchlist." # Default error
+            try:
+                api_url = f"{API_BASE_URL}/watchlist"
+                print(f"Calling API: GET {api_url}")
+                response = requests.get(api_url, timeout=15) # Increase timeout slightly maybe
+                print(f"API Response Status: {response.status_code}")
+                response.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
+                loaded_data = response.json() # Raises JSONDecodeError if response is not valid JSON
+
+                # Check if response is a dictionary (expected format)
+                if isinstance(loaded_data, dict):
+                    watched_items = loaded_data
+                    print(f"Watchlist loaded via API. Items: {len(watched_items)}")
+                    update_watchlist_display() # Update UI with loaded data
+                    update_status(watchlist_status_text, "Watchlist loaded.", is_loading=False, controls_to_disable=[check_watchlist_button])
+                    return # Success! Exit the function.
+                else:
+                    print(f"API Error: Expected dictionary but got {type(loaded_data)}")
+                    error_message = "Error: Invalid data format received."
+                    watched_items = {} # Reset on error
+
+            except requests.exceptions.Timeout:
+                print(f"Error loading watchlist via API: Timeout")
+                error_message = "Error: Timeout loading watchlist."
+                watched_items = {}
+            except requests.exceptions.HTTPError as http_err:
+                print(f"Error loading watchlist via API: HTTP Error {http_err.response.status_code}")
+                error_message = f"Error: Failed to load watchlist (HTTP {http_err.response.status_code})."
+                watched_items = {}
+            except requests.exceptions.RequestException as req_err:
+                # Covers DNS errors, connection errors etc.
+                print(f"Error loading watchlist via API: {req_err}")
+                error_message = "Error: Network connection failed."
+                watched_items = {}
+            except json.JSONDecodeError:
+                print(f"Error loading watchlist via API: Invalid JSON received.")
+                error_message = "Error: Received invalid data."
+                watched_items = {}
+            except Exception as e:
+                # Catch any other unexpected errors
+                print(f"Unexpected error in load_initial_data: {e}")
+                import traceback
+                traceback.print_exc() # Print full traceback to console
+                error_message = "Error: An unexpected error occurred."
+                watched_items = {}
+
+            # If we reached here, an error occurred
+            update_watchlist_display() # Show empty list on error
+            update_status(watchlist_status_text, error_message, is_error=True, controls_to_disable=[check_watchlist_button])
 
 
     # --- Modified Action Handlers ---
@@ -333,49 +365,65 @@ def main(page: ft.Page):
 
 # main.py - inside main() function
 
-    # --- Layout ---
-    page.clean() # Start fresh just in case
-    page.add(
-        # Section 1: Search Controls & Status (Wrap in non-expanding Column)
-        ft.Column(
-            [
-                ft.Row([item_input, fetch_button, add_watchlist_button], alignment=ft.MainAxisAlignment.START),
-                ft.Row([search_status_text]),
-                ft.Divider(height=5),
-            ],
-            expand=0 # Does not expand vertically
-        ),
+ # --- NEW Layout using a single main Column ---
+    page.clean() # Clear previous controls if any
 
-        # Section 2: Live Data Section (Wrap Header + Scrolling Column)
-        ft.Column(
-            [
-                live_orders_header_row, # Row with Title and Radio buttons
-                ft.Column(              # Inner Column JUST for the scrolling table
-                    [live_data_table],
-                    scroll=ft.ScrollMode.ADAPTIVE,
-                    expand=True         # This inner column's table scrolls and expands *within* its parent
-                )
-            ],
-            expand=2 # This whole section gets 2 parts of the space
-        ),
+    # Create the main content column that holds everything
+    main_content_column = ft.Column(
+        [
+            # Section 1: Search (Fixed Height)
+            ft.Column( # Use a column to group search elements
+                [
+                    ft.Row([item_input, fetch_button, add_watchlist_button], alignment=ft.MainAxisAlignment.START),
+                    ft.Row([search_status_text]),
+                ],
+                spacing=5 # Add a little space within the search section
+                # NO expand on this inner column
+            ),
+            ft.Divider(height=5, thickness=1),
 
-        # Section 3: Watchlist Section (Wrap Header + Scrolling Column)
-        ft.Column(
-            [
-            ft.Row([ ft.Text("Watchlist", style=ft.TextThemeStyle.HEADLINE_SMALL), ft.Column([ check_watchlist_button, ], spacing=0) ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+            # Section 2: Live Orders (Expanding)
+            ft.Text("Live Market Orders", style=ft.TextThemeStyle.HEADLINE_SMALL),
+            live_orders_header_row,
+            ft.Container( # Wrap DataTable in a Container that expands
+                content=live_data_table,
+                expand=2, # << Give this section 2 parts of the expanding space
+                border_radius=ft.border_radius.all(5), # Optional: visual aid
+                # border=ft.border.all(1, ft.colors.BLUE_200)  # Optional: visual aid
+            ),
+            ft.Divider(height=5, thickness=1),
+
+            # Section 3: Watchlist (Expanding)
+            ft.Row( # Header row for watchlist
+                [
+                    ft.Text("Watchlist", style=ft.TextThemeStyle.HEADLINE_SMALL),
+                    check_watchlist_button, # Keep button near title
+                ],
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN
+            ),
             ft.Row([watchlist_status_text]),
-            ft.Column(               # Inner Column JUST for the scrolling listview
-                    [watchlist_view],
-                    expand=True         # This inner list scrolls and expands *within* its parent
-                )
-            ],
-        expand=1 # This whole section gets 1 part of the space
-        ),
+            ft.Container( # Wrap ListView in a Container that expands
+                 content=watchlist_view, # ListView itself should still have expand=True
+                 expand=1, # << Give this section 1 part of the expanding space
+                 border_radius=ft.border_radius.all(5), # Optional: visual aid
+                 # border=ft.border.all(1, ft.colors.GREEN_200) # Optional: visual aid
+            ),
+        ],
+        expand=True, # <<< Make the MAIN Column fill the page height
+        spacing=5    # Add some spacing between major sections
     )
-    # --- End Layout ---
 
-    # --- Initial Data Load from API---
+    page.add(main_content_column)
+    # --- End New Layout ---
+
+    # --- Initial Data Load ---
+    print("DEBUG: About to call load_initial_data")
     load_initial_data()
+    print("DEBUG: Returned from load_initial_data")
+
+    # Initial page update might not be needed if load_initial_data calls it
+    page.update()
+
 
 # --- Run the App (No major changes needed here, cleanup is gone) ---
 if __name__ == "__main__":
